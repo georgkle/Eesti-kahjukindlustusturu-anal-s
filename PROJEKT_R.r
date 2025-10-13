@@ -6,6 +6,7 @@ library(dplyr)
 library(tidyr)
 library(lubridate)
 library(ggplot2)
+library(lubridate)
 #puhastame andmestiku
 andmed_a <- read_excel("C:\\Users\\arvut\\OneDrive - Tartu Ülikool\\ülikool\\R\\projekt\\kindlustusmaksed.xlsx", skip=1)
 View(andmed_a)
@@ -122,7 +123,7 @@ uuskuudekaupa_pikk <- uuskuudekaupa %>%
 #Sellejaoks filtreerime valja aasta 2020
 hooajalisus2020 <- uuskuudekaupa_pikk %>%
   filter(format(Date, "%Y")=="2020")
-hooajalisus1_2020 <- ggplot(hooajalisus2020, aes(Date, Makse, colour = Selts)) +
+hooajalisus1_2020 <- ggplot(hooajalisus2020, aes(month(Date), Makse, colour = Selts)) +
   geom_point() +                     
   geom_line()
 
@@ -132,14 +133,62 @@ hooajalisus_viimased5 <- uuskuudekaupa_pikk %>%
   filter(format(Date, "%Y")>="2020") %>%
   mutate(Aasta = format(Date, "%Y"))
 
-ggplot(hooajalisus_viimased5, aes(x=Date, y=Makse, colour=Selts)) + 
+aastad20_24_hooajalisus<-ggplot(hooajalisus_viimased5, aes(x=month(Date), y=Makse, colour=Selts)) + 
   geom_point() +
   geom_line() +
   facet_wrap(~Aasta, ncol=5, scales="free_x") + 
-  theme(axis.text.x = element_text(angle = 70, hjust = 1))
-  
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=6))
+
+#Filtreerime välja 5 suuremat ning 5 väiksemat kindlustusfirmat kindlustusmaksete järgi
+
+#esmalt loome värvid, et suure graafiku 10 värvi ühtiks ka väikeste graafikute värvidega.
+värvid <- ggplot_build(aastad20_24_hooajalisus)$data[[1]]$colour
+names(värvid) <- unique(hooajalisus_viimased5$Selts)
+#5 suuremat:
+hooajalisus_top5 <- uuskuudekaupa_pikk %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+hooajalisus_top5 <- arrange(hooajalisus_top5, desc(summa))
+hooajalisus_top5 <- hooajalisus_top5[1:5, ]
+
+hooajalisus_top5 <- uuskuudekaupa_pikk %>%
+  filter(Selts %in% hooajalisus_top5$Selts[1:5])
+
+hooajalisus_top5 <- hooajalisus_top5 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2020")
+
+#Teeme sarnase graafiku, kuid kus oleks top5 kindlustusmakse saajate kohta eraldi info
+ggplot(hooajalisus_top5, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=värvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=6)) 
+
+#Nüüd analoogiliselt teeme 5 väiksema kohta:
+hooajalisus_top5_2 <- uuskuudekaupa_pikk %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+hooajalisus_top5_2 <- arrange(hooajalisus_top5_2, desc(summa))
+hooajalisus_top5_2 <- hooajalisus_top5_2[6:10, ]
+
+hooajalisus_top5_2 <- uuskuudekaupa_pikk %>%
+  filter(Selts %in% hooajalisus_top5_2$Selts[1:5])
+
+hooajalisus_top5_2 <- hooajalisus_top5_2 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2020")
+
+#Graafik 5 väiksema seltsi kohta:
+ggplot(hooajalisus_top5_2, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=värvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=6))
 
 
-
-
-  
