@@ -1,10 +1,11 @@
-install.packages("readxl")
-install.packages("haven")
-install.packages("tidyr")
+#install.packages("readxl")
+#install.packages("haven")
+#install.packages("tidyr")
 library(readxl)
 library(dplyr)
 library(tidyr)
-
+library(lubridate)
+library(ggplot2)
 #puhastame andmestiku
 andmed_a <- read_excel("C:\\Users\\arvut\\OneDrive - Tartu Ülikool\\ülikool\\R\\projekt\\kindlustusmaksed.xlsx", skip=1)
 View(andmed_a)
@@ -49,7 +50,7 @@ View(fondid)
 
 #lisame juurde kogusumma
 fondid <- fondid %>%
-  left_join(andmed_summa, by="Aasta")
+  left_join(summa_aastate_kaupa, by="Aasta")
 
 #arvutame iga fondi osakaalu
 fondid_osakaal <- fondid %>%
@@ -124,5 +125,21 @@ hooajalisus2020 <- uuskuudekaupa_pikk %>%
 hooajalisus1_2020 <- ggplot(hooajalisus2020, aes(Date, Makse, colour = Selts)) +
   geom_point() +                     
   geom_line()
+
+#Teeme uue graafiku, mis on sarnane eelmisele, kuid kus kujutatakse kõike 5t aastat, selleks teeme tagasi veeru Aasta
+
+hooajalisus_viimased5 <- uuskuudekaupa_pikk %>%
+  filter(format(Date, "%Y")>="2020") %>%
+  mutate(Aasta = format(Date, "%Y"))
+
+ggplot(hooajalisus_viimased5, aes(x=Date, y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  theme(axis.text.x = element_text(angle = 70, hjust = 1))
+  
+
+
+
 
   
