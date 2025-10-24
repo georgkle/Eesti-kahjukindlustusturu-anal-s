@@ -316,3 +316,50 @@ turuosad <- ggplot(loplik_fondid_osakaal_pikk,
   ylab("Osakaal")
 
   
+#Uurime ka väljamaksete arvu aastatel 2018-2021 eraldi, et tekiks
+#Võrdlusmoment ja oleks näha, kas COVID pandeemia mõjutas makseid.
+#Teeme seda jällegi 5 suurema ja 5 väiksema seltsi kohta
+
+#5 suuremat
+koroona_top5 <- väljamaksed_kuud %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+koroona_top5 <- arrange(koroona_top5, desc(summa))
+koroona_top5 <- koroona_top5[1:5, ]
+
+koroona_top5 <- väljamaksed_kuud %>%
+  filter(Selts %in% koroona_top5$Selts[1:5])
+
+koroona_top5 <- koroona_top5 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2018"&year(Date)<"2022")
+
+#Graafik
+hooajalisus_koroona_suuremad <- ggplot(koroona_top5, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=värvid2) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=6)) 
+
+#5 väiksemat
+koroona_top5_2 <- väljamaksed_kuud %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+koroona_top5_2 <- arrange(koroona_top5_2, desc(summa))
+koroona_top5_2 <- koroona_top5_2[6:10, ]
+
+koroona_top5_2 <- väljamaksed_kuud %>%
+  filter(Selts %in% koroona_top5_2$Selts[1:5])
+koroona_top5_2 <- koroona_top5_2 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2018"&year(Date)<"2022")
+#Graafik
+hooajalisus_koroona_väiksemad <- ggplot(koroona_top5_2, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=värvid2) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=6)) 
