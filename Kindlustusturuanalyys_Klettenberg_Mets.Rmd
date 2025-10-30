@@ -1,0 +1,813 @@
+---
+title: ""
+author: ""
+date: ""
+output:
+  pdf_document:
+    latex_engine: xelatex
+    fig_caption: true
+    toc: false       
+    toc_depth: 3
+    number_sections: true
+
+fontsize: 12pt
+linestretch: 1.5
+mainfont: "Times New Roman"
+lang: estonian
+header-includes:
+  - \renewcommand{\figurename}{Joonis}
+  - \renewcommand{\tablename}{Tabel}
+  - \usepackage{caption}
+  - \captionsetup{font=small}
+  - \renewcommand{\contentsname}{Sisukord}
+---
+
+\begin{titlepage}
+\centering
+\vspace*{5cm}
+{\LARGE \textbf{Eesti kindlustusturu analüüs aastatel 2014–2024}}\\[1.5cm]
+{\large Raimond Mets, Georg Klettenberg}\\[1cm]
+{\large 2025}\\[8cm]
+\end{titlepage}
+
+\newpage
+\thispagestyle{empty}
+\tableofcontents
+\newpage
+
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(readxl)
+library(tidyr)
+library(lubridate)
+library(Polychrome)
+library(scales)
+library(stringr)
+library(reshape2)
+library(purrr)
+library(knitr)
+
+knitr::opts_chunk$set(
+  fig.align = "center",
+  out.width = "90%",
+  warning = FALSE,
+  message = FALSE
+)
+
+theme_set(theme_minimal(base_size = 12))
+
+#Kuna meie aruandes on palju visualiseeringutel seltse iseloomustatud värvidega, siis loome igale seltsile oma värvi
+#Värvid on loodud silmale võimalikult lihtsasti eristatavatena
+varvid <- c(
+  "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
+  "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC"
+)
+seltsid <- c("AAS BTA Baltic Insurance Company Eesti filiaal", "Swedbank P&C Insurance AS", "Akciné draudimo bendrové Gjensidige Eesti filiaal", "Eesti Liikluskindlustuse Fond, MTÜ", "Elama Kindlustus AS","ERGO Insurance SE","If P&C Insurance AS", "Kredex Krediidikindlustus AS", "Salva Kindlustuse AS", "AB Lietuvos draudimas Eesti filiaal")
+
+names(varvid) <- seltsid
+```
+
+\newpage
+
+# Sissejuhatus
+
+Projekti eesmärgiks on uurida Eesti kindlustusturgu üldiselt. Uuringu vaatlusperioodiks on 10 aastat, ehk aastad 2014-2024. Valitud on uuringu jaoks välja kindlustusettevõtted, mis on vähemalt 10 aastat vanad ning nende kohta on olemas piisavalt andmeid. Kõik graafikud ja tabelid on vormistatud programmeerimiskeele R abil.
+
+Uuritakse täpsemalt järgmiseid teemasid:
+
+1.     Turustruktuuri analüüs
+
+2.     Kasumlikkuse ja riskide analüüs
+
+3.     Hooajalisus ja trendid
+
+\newpage
+
+# Mõisted
+Kindlustusmakse - makse, mille tasub kindlustusvõtja kindlustuskaitse või kindlustuslepingu eest.
+
+Väljamakse - kindlustusseltsi poolt makstav summa kindlustusvõtjale kindlustusjuhtumi tagajärjel.
+
+Kindlustusselts - kindlustusandja.
+
+Kahjusuhe - väljamaksetase.
+
+\newpage
+
+# Turustruktuuri analüüs
+
+Selles peatükis keskendume Eesti kindlustusturu turustruktuurile - eelkõige turuosadele ja turukontsentratsioonile. Analüüs hõlmab järgmisi alateemasid:
+
+1.  Saadud kindlustusmaksed
+2.  Turuosad
+3.  Suurima 4 kindlustusfirmade turuosade võrdlus
+4.  Turu kontsentratsioon
+
+```{r, include=FALSE}
+ 
+Sys.setlocale("LC_ALL", "Estonian_Estonia.1257")
+#puhastame andmestiku
+andmed_a <- read_excel("C:\\Users\\arvut\\Documents\\ulikoolkohalik\\R\\kindlustusmaksed.xlsx", skip=1)
+View(andmed_a)
+andmed_a <- andmed_a[c(1:22), ]
+colSums(andmed_a == "."| andmed_a == "..")
+
+#salvestame andmed_a uude andmestikku, kus on välja jäätud veerud, kus esineb "." või ".." väärtuseid
+andmed <- andmed_a[, colSums(andmed_a == "." | andmed_a == "..", na.rm = TRUE) == 0]
+
+
+#arvutame saadud kindlustusmaksed kokku aastate kaupa
+
+#võtame read, kus on aasta olemas
+andmed_aasta <- andmed %>%
+  filter(!is.na(...1))
+
+#paneme veeru nimeks aasta ja lisame veerule õige tüübi
+andmed_aasta <- andmed_aasta %>%
+  rename(Aasta = ...1)
+
+#paneme väärtuste "Saadud kindlustusmaksed" veeru nimeks SaadudMaksed
+andmed_aasta <- andmed_aasta %>%
+  rename(SaadudMaksed = ...3)
+
+andmed_aasta$Aasta <- as.numeric(andmed_aasta$Aasta)
+
+
+#liidame kokku kindlustusmaksed aastate kaupa kõikide seltside peale kokku
+
+summa_aastate_kaupa <- andmed_aasta %>%
+  filter(SaadudMaksed == "Saadud kindlustusmaksed") %>%
+  group_by(Aasta) %>%
+  summarise(kokku = sum(across(where(is.numeric)), na.rm=TRUE))
+
+#arvutame firmade turuosad saadud kindlustusmaksete järgi aastate kaupa
+fondid <- andmed_aasta %>%
+  filter(SaadudMaksed == "Saadud kindlustusmaksed")
+
+#lisame juurde kogusumma
+fondid <- fondid %>%
+  left_join(summa_aastate_kaupa, by="Aasta")
+
+#arvutame iga fondi osakaalu
+fondid_osakaal <- fondid %>%
+  mutate(across(where(is.numeric) & !matches("kokku") & !matches("Aasta"),
+         ~ .x / kokku * 100,
+         .names = "{.col}_osakaal"))
+
+#jätame ebavajaliku info välja
+loplik_fondid_osakaal <- fondid_osakaal %>%
+  select(Aasta, ends_with("_osakaal"))
+
+#lõpuks kontrollin, kas arvutused klapivad, ehk kas iga aasta kohta saame osakaalu kokku 100%
+kontroll <- loplik_fondid_osakaal %>%
+  rowwise() %>%
+  mutate(kokku_osakaal = sum(c_across(ends_with("_osakaal"))))
+View(kontroll)
+#jätame "osakaal" iga veeru nimest ära
+names(kontroll) <- gsub("_osakaal$","",names(kontroll))
+
+kindlustusmaksed_aastates <- fondid[, c("Aasta", "kokku")]
+```
+
+\newpage
+
+## Saadud kindlustusmaksed
+
+Graafikul on arvestatud kõigi 10 kindlustusfirma saadud kindlustusmaksed ning on arvutatud nende summa ja esitatud see aastate kaupa. Kindlustusmaksete summa on üldiselt olnud kasvutrendis. Aastatel 2018-2020 esines mõnevõrra langust, võimalikuks teguriks võib lugeda COVID-19 pandeemiat, mil eskaleerus ülemaailmne majanduskriis. 2020-2024 on kindlustusmaksed tõusnud
+
+```{r, echo=FALSE,fig.cap="Saadud kindlustusmaksed aastatel 2014-2024"}
+
+plot(kindlustusmaksed_aastates$Aasta,
+     kindlustusmaksed_aastates$kokku,
+     type = "o",
+     pch = 16,
+     col = "blue",
+     xlab = "Aasta",
+     ylab = "Kindlustusmaksed (eur)",
+     )
+```
+
+\newpage
+
+## Turuosad
+
+Graafikul on kujutatud kõigi 10 firma turuosad kogu saadud kindlustusmaksetest iga aasta. Suurimate turuosadega firmad on If P&C Insurance AS, ERGO Insurance SE, Swedbank P&C Insurance AS, AB Lietuvos draduimas Eesti filiaal. Üldiselt väiksemate tegijate turuosad on jäänud samaks, ei ole esinenud suuri tõuse ega langusi.
+
+```{r SIINFAILITEEMUUTA, include=FALSE}
+
+#puhastame andmestiku
+andmed_a <- read_excel("C:\\Users\\arvut\\Documents\\ulikoolkohalik\\R\\kindlustusmaksed.xlsx", skip=1)
+View(andmed_a)
+andmed_a <- andmed_a[c(1:22), ]
+colSums(andmed_a == "."| andmed_a == "..")
+
+#salvestame andmed_a uude andmestikku, kus on välja jäätud veerud, kus esineb "." või ".." väärtuseid
+andmed <- andmed_a[, colSums(andmed_a == "." | andmed_a == "..", na.rm = TRUE) == 0]
+View(andmed)
+
+
+#arvutame saadud kindlustusmaksed kokku aastate kaupa
+
+#võtame read, kus on aasta olemas
+andmed_aasta <- andmed %>%
+  filter(!is.na(...1))
+View(andmed_aasta)
+
+#paneme veeru nimeks aasta ja lisame veerule õige tüübi
+andmed_aasta <- andmed_aasta %>%
+  rename(Aasta = ...1)
+
+#paneme väärtuste "Saadud kindlustusmaksed" veeru nimeks SaadudMaksed
+andmed_aasta <- andmed_aasta %>%
+  rename(SaadudMaksed = ...3)
+
+andmed_aasta$Aasta <- as.numeric(andmed_aasta$Aasta)
+
+
+#liidame kokku kindlustusmaksed aastate kaupa kõikide seltside peale kokku
+
+summa_aastate_kaupa <- andmed_aasta %>%
+  filter(SaadudMaksed == "Saadud kindlustusmaksed") %>%
+  group_by(Aasta) %>%
+  summarise(kokku = sum(across(where(is.numeric)), na.rm=TRUE))
+
+
+#arvutame firmade turuosad saadud kindlustusmaksete järgi aastate kaupa
+fondid <- andmed_aasta %>%
+  filter(SaadudMaksed == "Saadud kindlustusmaksed")
+View(fondid)
+
+#lisame juurde kogusumma
+fondid <- fondid %>%
+  left_join(summa_aastate_kaupa, by="Aasta")
+
+#arvutame iga fondi osakaalu
+fondid_osakaal <- fondid %>%
+  mutate(across(where(is.numeric) & !matches("kokku") & !matches("Aasta"),
+                ~ .x / kokku * 100,
+                .names = "{.col}_osakaal"))
+View(fondid_osakaal)
+
+#jätame ebavajaliku info välja
+loplik_fondid_osakaal <- fondid_osakaal %>%
+  select(Aasta, ends_with("_osakaal"))
+
+View(loplik_fondid_osakaal)
+
+#lõpuks kontrollin, kas arvutused klapivad, ehk kas iga aasta kohta saame osakaalu kokku 100%
+kontroll <- loplik_fondid_osakaal %>%
+  rowwise() %>%
+  mutate(kokku_osakaal = sum(c_across(ends_with("_osakaal"))))
+View(kontroll)
+
+#Et luua turuosade graafikut, viime andmestiku pikale kujule
+
+loplik_fondid_osakaal_pikk <- loplik_fondid_osakaal %>%
+  pivot_longer(-Aasta, names_to = "Selts", values_to = "Osakaal")
+
+loplik_fondid_osakaal_pikk <- loplik_fondid_osakaal_pikk %>%
+  mutate(Selts = str_remove(Selts, "_osakaal"))
+
+View(loplik_fondid_osakaal_pikk)
+
+```
+
+```{r kindlustusturu_joonis, fig.cap="Turuosade muutus 2014-2024",echo=FALSE}
+#Joonis, mis iseloomustab turuosade muutust läbi aastate
+ggplot(loplik_fondid_osakaal_pikk,
+                   aes(x = Aasta, y = Osakaal/100, fill = Selts)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = percent(Osakaal/100, accuracy = 1)),
+            position = position_stack(vjust = 0.5),
+            size = 2) +
+  scale_fill_manual(values = varvid) +
+  scale_x_continuous(breaks = 2014:2024) +
+  scale_y_continuous(labels = percent_format(accuracy = 1)) +
+  theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 10)) +
+  ylab("Osakaal")
+
+#Võtame siit graafikult värvid ja salvesamte igale värvile seltsi nime, et pärast igal graafikul oleks iga selts
+#Sama värviga
+
+```
+
+\newpage
+
+## Suurima 4 kindlustusseltside turuosade võrdlus
+
+Tabelis on esitatud suurima 4 firma turuosad aastate kaupa. Kindlustusfirma If P&C Insurance AS turuosa on märkimisväärselt langenud, kui aastal 2014 oli turuosa 32.8%, siis 2024 aasta seisuga on see vähenenud ligi 11% võrra, ehk langenud 21.45%-ni. 2024 aasta seisuga omab kõige rohkem turuosa Swedbank P&C Insurance AS, mis omab koguturust 23.4%. Kõige enam on kasvanud firma AB Lietuvos draudimas Eesti filiaal (PZU), mis on võrreldes aastaga 2014 tõusnud ligikaudu 14% võrra.
+
+```{r,echo=FALSE ,results="asis"}
+names(kontroll) <- gsub("_osakaal$","",names(kontroll))
+top4 <- kontroll[, c("Aasta","ERGO Insurance SE","Swedbank P&C Insurance AS","If P&C Insurance AS","AB Lietuvos draudimas Eesti filiaal")]
+
+kable(caption = "Nelja suurima kindlustusseltsi turuosad" ,top4, digits=c(1,2))
+```
+
+\newpage
+
+```{r graafikturuosad1, echo=FALSE, message=FALSE, warning=FALSE,fig.cap="Suurima nelja firma turuosad 2014-2024"}
+#võrdlen suurima 4 turuosa:
+
+
+names(kontroll) <- gsub("_osakaal$","",names(kontroll))
+top4 <- kontroll[, c("Aasta","ERGO Insurance SE","Swedbank P&C Insurance AS","If P&C Insurance AS","AB Lietuvos draudimas Eesti filiaal")]
+
+turuosad_long <- top4 %>%
+  pivot_longer(
+    cols = -Aasta,                # kõik veerud peale "Aasta"
+    names_to = "Ettevõte",        # uus veerg ettevõtte nime jaoks
+    values_to = "Turuosa"         # uus veerg turuosa väärtuse jaoks
+  )
+ggplot(turuosad_long, aes(x = Aasta, y = Turuosa, color = Ettevõte)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    x = "Aasta",
+    y = "Turuosa (%)",
+    color = "Ettevõte"
+  ) +
+  scale_x_continuous(breaks = 2014:2024) +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1, size=8)) +
+  scale_color_manual(values = varvid)
+
+ 
+
+```
+
+Graafik on koostatud tabeli andmete põhjal, et anda selgem ülevaade kindlustusfirmade turuosade muutumisest aastatel 2014–2024. Kõige stabiilsema turuosaga ettevõte on olnud **AB Lietuvos draudimas Eesti filiaal** (PZU), kelle põhitegevus on seotud **liikluskindlustuse ja varakindlustuse** pakkumisega.
+
+Vaadeldes perioodi **2020–2022**, mida mõjutas COVID-19 pandeemia, on näha, et **ainus kindlustusfirma, kelle turuosa kasvas**, oli **If P&C Insurance AS**. Antud ettevõte teenis suurima osa oma kindlustusmaksetest **sõidukite ja liikluskindlustuse** valdkonnast.
+
+\newpage
+\newpage
+
+## Turu kontsentratsioon
+
+Tabelis on kujutatud nelja suurima kindlustusfirma (CR4) turuosade summa aastate kaupa ning arvutatud **Herfindahl–Hirschmani indeks (HHI)**, mis näitab turu kontsentratsiooni taset — ehk kui suur osa turust on koondunud suurte ettevõtete kätte.
+
+HHI väärtuse põhjal võib järeldada, et Eesti kindlustusturg on **väga kontsentreeritud**, mis tähendab, et turgu juhivad peamiselt mõned suured kindlustusseltsid. Sellises olukorras on **väiksematel ettevõtetel keeruline turule siseneda või konkureerida** olemasolevate suurte tegijatega.
+
+```{r, echo=FALSE,results="asis"}
+
+turu_konsentratsioon <- loplik_fondid_osakaal %>%
+  rowwise() %>%
+  mutate(
+    CR4 = sum(sort(c_across(-Aasta), decreasing = TRUE)[1:4]),
+    HHI = sum((c_across(-Aasta)/100)^2) *10000
+  )
+kable(caption="HHI ja CR4 aastate kaupa",turu_konsentratsioon[, c("Aasta","CR4","HHI")],digits=c(1,2))
+
+```
+
+\newpage
+
+```{r, echo=FALSE, fig.cap="CR4 ja kontsentratsioon 2014-2024"}
+ggplot(turu_konsentratsioon, aes(x = Aasta)) +
+  geom_line(aes(y = CR4, color = "CR4 (nelja suurima osakaal)"), size = 1.2) +
+  geom_line(aes(y = HHI/100, color = "HHI/100"), size = 1.2, linetype = "dashed") +
+  scale_y_continuous(
+    name = "CR4 (%)",
+    sec.axis = sec_axis(~.*100, name = "HHI")
+  ) +
+  labs(
+       x = "Aasta",
+       color = "Näitajad") + theme_minimal()
+
+```
+
+Graafikul on kujutatud nelja suurima kindlustusfirma (CR4) koguturgu ning Herfindahl–Hirschmani indeksi (HHI) väärtusi aastate kaupa. Mõlema näitaja trendid liiguvad sarnaselt, mis viitab tugevale positiivsele korrelatsioonile.
+
+CR4 väärtus püsib kogu perioodil 79–82% vahel, mis näitab, et neli suurimat ettevõtet omavad selget turuosa ülekaalu. HHI indeksit (keskmiselt üle 8000) arvestades on Eesti kindlustusturg **kõrge kontsentratsiooniga**, mis tähendab, et turgu juhivad mõned suured ettevõtted ning väiksemate kindlustusandjate konkurentsivõime on piiratud.
+
+\newpage
+
+# Kasumlikkuse ja riskide analüüs
+
+Selles peatükis uurime täpsemalt firmade väljamaksete ja saadud maksete suhet, ning uurime kas suure turuosaga firmadel on madalamad kahjusuhted.
+
+\newpage
+
+## Kahjusuhe
+
+```{r valjamaksed,echo=FALSE,fig.cap="Kahjusuhted"}
+#loeme sisse andmed väljamaksete kohta
+andmed_valjamaksed <- read_excel("C:\\Users\\arvut\\Documents\\ulikoolkohalik\\R\\RRI07_20250925-203409.xlsx", skip=1)
+#filtreerime välja vajaliku
+andmed_a <- andmed_valjamaksed[c(1:11),c(1,3,6:25)]
+
+
+valjamaksed <- andmed_a[, colSums(andmed_a == "." | andmed_a == "..", na.rm=TRUE)==0]
+
+
+sissemaksed <- fondid[, c(1,3,5:15)]
+
+valjamaksed <- valjamaksed %>%
+  rename(Aasta = ...1)
+
+#on kaks andmestikku sissemaksed ja valjamaksed
+valjamaksed$Aasta <- as.numeric(valjamaksed$Aasta)
+colnames(sissemaksed)[-1] <- paste0(colnames(sissemaksed)[-1], "_sissemakse")
+colnames(valjamaksed)[-1] <- paste0(colnames(valjamaksed)[-1], "_valjamakse")
+
+
+df <- sissemaksed %>%
+  inner_join(valjamaksed, by="Aasta")
+
+
+vajalikud <- df[, !names(df) %in% c("SaadudMaksed_sissemakse","kokku_sissemakse","...3_valjamakse")]
+
+
+#leiame kõikide firmade nimed kasutame tsüklit
+sissemakse_veerud <- grep("_sissemakse$", names(vajalikud), value=TRUE)
+firmad <- sub("_sissemakse$", "", sissemakse_veerud)
+
+for (firma in firmad) {
+  sissemakse_col <- paste0(firma, "_sissemakse")
+  valjamakse_col <- paste0(firma, "_valjamakse")
+  suhe_col <- paste0(firma, "_suhe")
+  
+  vajalikud[[suhe_col]] <- vajalikud[[valjamakse_col]] / vajalikud[[sissemakse_col]]
+}
+  
+#paneme andmestiku kitsasse formaati, paremaks andmete visualisatsiooniks
+
+vajalikud_pikk <- vajalikud %>%
+  pivot_longer(
+    cols= -Aasta,
+    names_to = c("Firma", ".value"),
+    names_sep ="_") %>%
+  mutate(suhe = valjamakse / sissemakse)
+
+View(vajalikud_pikk)
+
+###########
+
+#Teeme graafiku firmade kahjusuhetest
+ggplot(vajalikud_pikk, aes(x=Aasta, y=suhe, fill =Firma)) +
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values=varvid) +
+  scale_x_continuous(breaks = 2014:2024) +
+  theme(axis.text.x=element_text(angle=60, hjust=1, size=10))+
+  ylab("Kahjusuhe") +
+  geom_text(aes(label=round(suhe, 2)),
+            position = position_stack(vjust=0.5),
+            size=2,
+            color="black")
+
+```
+
+Graafikul on esitatud kõigi 10 kindlustusfirma kahjusuhted aastate jooksul. Kõrgeim kahjusuhe esineb Eesti Liikluskindlustuse Fondil 2014-2015 aastatel. Kuna fondi ülesanne on katta kindlustamata sõidukite ja teadmata süüdlastest põhjustatud kahjusid, siis võib see periood peegeldada ebatavaliselt suurt sellist juhtumite hulka. **NB!** ELF ei kogu otseseid kindlustusmakseid, vaid saab osalustasusid teistelt kindlustusseltsidelt, et katta kindlustamata ja teadmata süüdlastest põhjustatud kahjusid.
+\newpage
+
+## Kümne aasta keskmine kahjusuhe
+
+```{r,echo=FALSE,results="asis"}
+keskmised_suhted <- vajalikud_pikk %>%
+  group_by(Firma) %>%
+  summarise(
+    keskmine_suhe = mean(suhe, na.rm = TRUE),
+    sd_suhe = sd(suhe, na.rm = TRUE),
+    min_suhe = min(suhe, na.rm = TRUE),
+    max_suhe = max(suhe, na.rm = TRUE)
+  ) %>%
+  arrange(desc(keskmine_suhe))
+kable(caption="Seltsid ning nende kahjusuhet kirjeldav statistika", keskmised_suhted, digits=c(1,2))
+
+```
+
+Võrreldes kindlustusfirmade keskmisi kahjusuhteid perioodil 2014-2024, selgub, et madalaima ehk kõige tulusama kahjusuhtena paistavad silma **Salva Kindlustuse AS** ja **KredEx Krediidikindlustus AS**, mille keskmine kahjusuhe on ligikaudu 0.53. See tähendab, et nende ettevõtete väljamaksed moodustavad vaid ligikaudu poole saadud kindlustusmaksetest, mis viitab efektiivsele riskijuhtimisele ja tugevale kasumlikkusele. Kõige kõrgema kahjusuhtena eristub Eesti Liikluskindlustuse Fond, mis on ootuspärane, kuna fondi eesmärk on tagada hüvitised kindlustamata sõidukite tekitatud kahjude eest, mitte teenida kasumit. Üldiselt võib järeldada, et enamik kindlustusfirmasid on olnud tulusad ja stabiilsed, mis näitab head riskijuhtimist ning jätkusuutlikku tegevusmudelit Eesti kindlustusturul.
+
+\newpage
+
+## 4 suurema turuosaga firmade kahjusuhted keskmisest
+
+```{r graafik4,fig.cap="TOP4 turuosa vs keskmine kahjusuhe", echo=FALSE, warning=FALSE}
+
+
+#keskmine suhe aastate kaupa
+tulemus <- vajalikud_pikk[, c("Aasta","Firma","valjamakse","sissemakse","suhe")]
+keskmine_suhe <- tulemus %>%
+  group_by(Aasta) %>%
+  summarise(keskmine = mean(suhe, na.rm=TRUE))
+
+
+
+#4 suurimat firmat läbi aastate (suurima turuosaga)
+
+#paneme esmalt pikka formaati
+vajalik <- loplik_fondid_osakaal %>%
+  pivot_longer(
+    cols = -Aasta,
+    names_to = "Firma",
+    values_to = "turuosa"
+  )
+
+#leiame 4 suurimat
+
+suurimadfirmad_4 <- vajalik %>%
+  group_by(Aasta) %>%
+  arrange(desc(turuosa), .by_group=TRUE) %>%
+  slice_head(n=4)
+
+
+
+
+#puhastame suurimadfirmade nimed, paneme lihtsalt firma nime ja jatame lopust "osakaal" valja
+suurimadfirmad_4 <- suurimadfirmad_4 %>%
+  mutate(Firma = sub("_osakaal$","",Firma))
+#lisame 4 suurimale ka nende suhted.
+suurimate_suhe <- inner_join(tulemus, suurimadfirmad_4,
+  by = c("Aasta", "Firma"))
+
+
+#koostan andmestiku, kus on lisatud ka üldkeskmine suhe kõikide fondide peale kokku
+
+yldkeskmine_suurimad_suhted <- inner_join(suurimate_suhe, keskmine_suhe,
+                                          by = c("Aasta"))
+
+#Graafik, selle kohta, kas suuremate turuosadega firmadel on madalam kahjusuhe
+
+ggplot(yldkeskmine_suurimad_suhted, aes(x=Aasta)) +
+  geom_line(aes(y=suhe, color=Firma), size=1.2) +
+  geom_line(aes(y=keskmine), color = "black", size=1.2, linetype ="dashed") +
+  labs(
+    x = "Aasta",
+    y = "Väljamakse/Sissemakse suhe",
+    color = "Firma"
+  ) + scale_x_continuous(breaks=2014:2024) +
+  scale_color_manual(values = varvid) +
+  theme(axis.text.x = element_text(angle = 75, hjust = 1, size=8))
+
+```
+
+Graafikult on näha, et nelja suurima kindlustusfirma kahjusuhted on igal aastal olnud kõigi ettevõtete keskmisest madalamad, mis viitab sellele, et suuremad kindlustusseltsid on olnud tulusamad ja tõhusama riskijuhtimisega kui väiksemad turuosalised. Madalaim kahjusuhe registreeriti 2018. aastal, mis näitab ettevõtete eriti head kahjukontrolli ja kasumlikkust. Aastatel 2020-2022 tõusid kahjusuhted märgatavalt, tõenäoliselt COVID-19 pandeemia ja majandusliku ebastabiilsuse tõttu. Siiski püsis suurfirmade kahjusuhe ka nendel aastatel alla turu keskmise, mis näitab nende paremat kohanemisvõimet kriisiolukordades ning efektiivset riskijuhtimist. Alates 2022. aasast on kahjusuhted taas langustrendis, mis viitab turu stabiliseerumisele ja kasumlikkuse taastumisele
+
+\newpage
+
+# Hooajalisus ja trendid
+Töö autorite üheks eesmärgiks oli lisaks uurida kindlustusturu hooajalisust. Visualiseerimise lihtsustamiseks on selles ja järgmises peatükis vaatluse alla võetud aastad 2018-2024 ning uuritud iga kuu kindlustusmakseid ning seltside väljamakseid. Eraldi on ka vaadatud COVID19 pandeemija võimalikku mõju maksetele.
+
+## Kindlustusmaksete hooajalisus
+Kindlustusmaksed on need, mida seltsid igakuiselt või aastalt oma klientidelt tasuna saavad. Võib eeldada, et sellistel maksetel ju mingit kindlat mustrit välja ei joonistu. Küll aga võib graafikutelt välja lugeda teatavaid seaduspärasusi. Siinkohal jaotame vaadeldavad seltsid kaheks: viis suuremate kindlustusmaksetega ja viis väiksematega.
+```{r kindlustusmaksetehooajalisus1, echo=FALSE,fig.cap="Viie suurema firma kindlustusmaksed 2020-2024, kuude lõikes", fig.width=10, fig.height=7}
+#loeme sisse andmestiku kindlustusmaksete kohta kuude lõikes aastatest 2014-2024
+kuudekaupa <- read_excel("C:\\Users\\arvut\\Documents\\ulikoolkohalik\\R\\kindlustusmaksed_kuudekaupa.xlsx")
+
+
+#muudame veeru ..1 ja ..2 vastavalt "Aasta" ja "Kuu
+kuudekaupa <- kuudekaupa %>%
+  rename(Aasta = ...1)
+
+kuudekaupa <- kuudekaupa %>%
+  rename(Kuu = ...2)
+
+#eemaldame tühjad read lõpust ja salvestame muudetud andmestiku uude
+uuskuudekaupa <- kuudekaupa[1:132, 1:12]
+
+#lisame iga kuu ette vastava aasta (2014-2024)
+uuskuudekaupa <- uuskuudekaupa %>%
+  fill(Aasta)
+
+#teeme uue veeru "Date", kus on kuu ja aasta kokkupandud
+#esmalt faktoriseerime kuud
+uuskuudekaupa$Kuu <- factor(uuskuudekaupa$Kuu, levels = c("Jaanuar", "Veebruar", "Märts",
+                                                          "Aprill", "Mai", "Juuni",
+                                                          "Juuli", "August", "September",
+                                                          "Oktoober", "November", "Detsember"))
+#lisame kuu numbri
+uuskuudekaupa <- uuskuudekaupa %>%
+  mutate(kuu_nr=as.integer(Kuu),
+         Date = as.Date(paste(Aasta, kuu_nr, 1, sep = "-")))
+
+#võtame veerud kuu numbri, aasta ja kuu kohta ära ja jätame ainult "Date", et andmeliiasust vältida
+uuskuudekaupa <- uuskuudekaupa %>%
+  mutate(kuu_nr = NULL,
+         Aasta = NULL,
+         Kuu = NULL)
+
+#tõstame veeru "Date" andmestikus kõige ette, et oleks loetavamal kujul
+uuskuudekaupa <- uuskuudekaupa %>%
+  select(Date, everything())
+
+#Viime andmestiku pikale kujule, et saaks teha mugavamalt andmestikuga tööd
+uuskuudekaupa_pikk <- uuskuudekaupa %>%
+  pivot_longer(cols = -Date,
+               names_to="Selts",
+               values_to="Makse")
+
+#Filtreerime välja 5 suuremat ning 5 väiksemat kindlustusfirmat kindlustusmaksete järgi
+#5 suuremat:
+hooajalisus_top5 <- uuskuudekaupa_pikk %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+hooajalisus_top5 <- arrange(hooajalisus_top5, desc(summa))
+hooajalisus_top5 <- hooajalisus_top5[1:5, ]
+
+hooajalisus_top5 <- uuskuudekaupa_pikk %>%
+  filter(Selts %in% hooajalisus_top5$Selts[1:5])
+
+hooajalisus_top5 <- hooajalisus_top5 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2020")
+
+#Teeme graafiku, kus on top5 kindlustusmakse saajate kohta eraldi info
+ggplot(hooajalisus_top5, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  labs(x="Kuu", y="Kindlustusmakse", title = "Aasta") +
+  scale_colour_manual(values=varvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=10)) 
+
+```
+Graafikult on näha, et kõrgemate kindlustusmaksetega seltsidel saabuvad lõviosa maksetest kas jaanuaris või detsembris ja nii aastast aastasse. Samuti on hea näha ka seda, et iga seltsi kindlustusmaksed on tõusvas trendis, see tähendab, et iga ettevõte on arenemas ja kliendibaas suureneb. **Salva Kindlustus AS** on pealtnäha ainus ettevõte, kelle kindlustusmaksed on viimase viie aasta jooksul stabiilsed olnud, näha on ka, et igakuiselt pole suuri erinevusi. See võib tähendada, seda, et seltsis on rohkem kuiseid lepinguid sõlmitud või hoopis seda, et iga kuu on sõlmitud lepinguid arvuliselt võrdselt.
+Edasi vaatame, kuidas on joonistunud viie väiksema seltsi kindlustusmaksed.
+
+```{r kindlustusmaksetehooajalisus2, echo=FALSE,fig.cap="Viie väiksema firma kindlustusmaksed 2020-2024, kuude lõikes", fig.width=10, fig.height=7}
+#Nüüd analoogiliselt teeme 5 väiksema kohta:
+hooajalisus_top5_2 <- uuskuudekaupa_pikk %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+hooajalisus_top5_2 <- arrange(hooajalisus_top5_2, desc(summa))
+hooajalisus_top5_2 <- hooajalisus_top5_2[6:10, ]
+
+hooajalisus_top5_2 <- uuskuudekaupa_pikk %>%
+  filter(Selts %in% hooajalisus_top5_2$Selts[1:5])
+
+hooajalisus_top5_2 <- hooajalisus_top5_2 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2020")
+
+#Graafik 5 väiksema seltsi kohta:
+ggplot(hooajalisus_top5_2, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=varvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=10)) +
+  labs(x="Kuu", y="Kindlustusmakse", title = "Aasta")
+
+```
+Vastupidiselt suurtematele seltsidele kindlustusmaksete poolest, on väiksemad seltsid rohkem stabiilsed ning ei ole suurt kasvutrendi märgata. Saab öelda, et **AAS BTA Baltic Insurance Company Eesti filiaal** on väga kõikuv oma kindlustusmaksete poolest, seda võib iseloomustada rohkete lepingute arvu, mis on sõlmitud aasta lõpus ja alguses. Siinkohal tasub ära mainida, et **Eesti Liikluskindlustuse Fond, MTÜ** saab igakuiselt igalt seltsilt teatava summa ja ei ole ise kindlustuslepingute tavapärane sõlmija, seetõttu ka nende maksed on pisemad ning kuude lõikes stabiilsed.
+
+## Seltside väljamaksete hooajalisus
+Suuremat intriigi võib pakkuda hoopis väljamaksete analüüs. Selles peatükis proovime mõista, kas mõnes kuus on väljamaksete summa võrreldes teisega suurem ning kuidas on nendele mõju avaldanud koroonaviiruse pandeemia.
+
+Sarnaselt eelmisele peatükile oleme seltsid jaotanud väljamaksete poolest väiksemateks ja suuremateks ning uurime neid eraldi.
+
+```{r valjamaksetehooajalisus, echo=FALSE,fig.cap="Viie suurema firma väljamaksed 2020-2024, kuude lõikes", fig.width=10, fig.height=7}
+#Kuna need graafikud iseloomustavad kindlustusmaksete toimumise aega, siis ei ütle see õnnetuste toimumiste kohta eriti midagi
+#Pigem selle kohta, millised lepingud sõlmitud on (kui kindlustusmaksed on igakuu samad siis saab öelda, et rohkem on kuiseid lepinguid, igal kuul on sõlmitud aastasi lepinguid vm)
+#Teeme täpselt samad sammud läbi ka väljamaksete kohta
+
+#Loeme sisse andmestiku kuude lõikes väljamaksete kaupa
+
+väljamaksed_kuud <- read_excel("C:\\Users\\arvut\\Documents\\ulikoolkohalik\\R\\valjamaksed.xlsx")
+väljamaksed_kuud <- väljamaksed_kuud %>%
+  rename("Aasta"=...1,
+         "Kuu"=...2) %>%
+  mutate(...3=NULL,
+         ...4=NULL)
+
+väljamaksed_kuud <- väljamaksed_kuud %>%
+  fill(Aasta)
+
+
+väljamaksed_kuud$Kuu <- factor(väljamaksed_kuud$Kuu, levels = c("Jaanuar", "Veebruar", "Märts",
+                                                          "Aprill", "Mai", "Juuni",
+                                                          "Juuli", "August", "September",
+                                                          "Oktoober", "November", "Detsember"))
+
+väljamaksed_kuud <- väljamaksed_kuud %>%
+  mutate(kuu_nr=as.integer(Kuu),
+         Date = as.Date(paste(Aasta, kuu_nr, 1, sep = "-")))
+
+
+väljamaksed_kuud <- väljamaksed_kuud %>%
+  mutate(kuu_nr = NULL,
+         Aasta = NULL,
+         Kuu = NULL)
+
+
+väljamaksed_kuud <- väljamaksed_kuud %>%
+  select(Date, everything())
+
+väljamaksed_kuud <- väljamaksed_kuud %>%
+  pivot_longer(cols = -Date,
+               names_to="Selts",
+               values_to="Makse")
+
+#Oleks saanud ka kohe excelist importida ühes tabelis nii kindlustusmaksed kui ka väljamaksed, ei tea miks me
+#Nii ei teinud ;D
+
+
+
+#Filtreerime välja 5 suuremat ja väiksemat nagu ennegi
+
+#5 suuremat
+hooajalisusv_top5 <- väljamaksed_kuud %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+hooajalisusv_top5 <- arrange(hooajalisusv_top5, desc(summa))
+hooajalisusv_top5 <- hooajalisusv_top5[1:5, ]
+
+hooajalisusv_top5 <- väljamaksed_kuud %>%
+  filter(Selts %in% hooajalisusv_top5$Selts[1:5])
+
+hooajalisusv_top5 <- hooajalisusv_top5 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2020")
+
+#Graafik 5le suuremale, jällegi sarnane eelnevale. Kasutame varem loodud värve
+ggplot(hooajalisusv_top5, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=varvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  labs(x="Kuu", y="Kindlustusmakse", title = "Aasta") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=10))
+
+```
+Esmajoones saab kohe väita, et suurte seltside väljamaksed on sarnaselt kindlustusmaksetele kasvutrendis. Üheks põhjuseks võib olla kliendibaasi suurenemine ning sellest tulenevalt ka õnnetusjuhtumite kasv, mis tagabki suuremad väljamaksed. Samuti võib väita ka, et suvekuud on väljamaksete osas võrreldes teiste kuudega pigem rahulikud. Talveperiood vastupidiselt omab aga märkimisväärsemalt mahukamaid väljamakseid. See on ka loogiline, sest ilmastik muutub õnnetusi soosivamaks ning risk kindlustada saada suureneb. Üle poolte väljamaksetest moodustab liikluskindlustus, seega on ilmne, miks talvekuudel väljamaksed suuremad on. Lisaks saab välja tuua, et **AAS BTA Baltic Insurance Company Eesti filiaal** on ainus selts, mille väljamaksed on pigem stabiilsemad ning, mis kasvutrendi ei oma. Lisaks sellele on see selts nii välja- kui ka kindlustusmaksete poolest üsna samal joonel. Järgnevalt vaatame väljamaksete poolest viite väiksemalt seltsi.
+
+```{r valjamaksetehooajalisus2, echo=FALSE,fig.cap="Viie väiksema firma väljamaksed 2020-2024, kuude lõikes", fig.width=10, fig.height=7}
+#5 väiksemat
+hooajalisusv_top5_2 <- väljamaksed_kuud %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+hooajalisusv_top5_2 <- arrange(hooajalisusv_top5_2, desc(summa))
+hooajalisusv_top5_2 <- hooajalisusv_top5_2[6:10, ]
+
+hooajalisusv_top5_2 <- väljamaksed_kuud %>%
+  filter(Selts %in% hooajalisusv_top5_2$Selts[1:5])
+
+hooajalisusv_top5_2 <- hooajalisusv_top5_2 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2020")
+
+
+
+#Graafik
+ggplot(hooajalisusv_top5_2, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=varvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  labs(x="Kuu", y="Kindlustusmakse", title = "Aasta") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=10)) 
+```
+Vastupidiselt suurtematele seltsidele pole pisematel suurt hooajalisust märgata. Saame väita, et väiksematel seltsidel on väljamaksed väga stabiilsed. Seda iseloomustab ka turu konsentreeritus. Neil ei ole väga võimalik turule suuremahuliselt pääseda, sest turg on pigem kaldunud suurte seltside kätte. Samuti võib väita, et väiksemad kindlustusandjad on riskikartlikumad ja valivad kliente.
+
+\newpage
+
+## Koroonapandeemija mõju väljamaksetele
+Viimaseks uurime, kuidas ja kas koroonapandeemija algus mõjutas kindlustusseltse.
+Siinkohal jällegi oleme liigitanud seltsid väljamaksete poolest suuremateks ja väiksemateks nagu varemgi. Võtame vaatluse alla aastad 2018-2021, et tekiks võimalik võrdlusmoment aastaga 2020.
+
+```{r valjamaksetehooajalisus3, echo=FALSE,fig.cap="Viie suurema firma väljamaksed 2018-2021, kuude lõikes", fig.width=10, fig.height=7}
+#5 suuremat
+koroona_top5 <- väljamaksed_kuud %>%
+  group_by(Selts) %>%
+  summarise(summa=sum(Makse))
+koroona_top5 <- arrange(koroona_top5, desc(summa))
+koroona_top5 <- koroona_top5[1:5, ]
+
+koroona_top5 <- väljamaksed_kuud %>%
+  filter(Selts %in% koroona_top5$Selts[1:5])
+
+koroona_top5 <- koroona_top5 %>%
+  mutate(Aasta=year(Date)) %>%
+  filter(year(Date)>="2018"&year(Date)<"2022")
+
+#Graafik
+ggplot(koroona_top5, aes(x=month(Date), y=Makse, colour=Selts)) + 
+  geom_point() +
+  geom_line() +
+  scale_colour_manual(values=varvid) +
+  facet_wrap(~Aasta, ncol=5, scales="free_x") + 
+  scale_x_continuous(breaks = 1:12, labels = 1:12) +
+  labs(x="Kuu", y="Kindlustusmakse", title = "Aasta") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=10))
+```
+Vaadates graafikut, siis ei saa mitte midagi kindlat väita üldise kahjukindlustuse koroonapandeemijast mõjutatuse kohta, seda iseloomustaski paremini üldine kahjusuhe, mida käsitleti turu analüüsi peatükis.
+
+\newpage
+
+# Kokkuvõte
+Eesti kindlustusturg on viimase kümne aasta jooksul olnud tugevalt kontsentreeritud, kus nelja suurima kindlustusfirma turuosa püsib 79–82% vahel. Herfindahl–Hirschmani indeksi väärtus, keskmiselt üle 8000, kinnitab, et turgu juhivad peamiselt suured ettevõtted, samas kui väiksematel kindlustusandjatel on konkurentsivõime piiratud.
+
+Suurte kindlustusfirmade kahjusuhted on kogu perioodi jooksul olnud madalamad kui turu keskmine, mis viitab tõhusale riskijuhtimisele ja suuremale kasumlikkusele. Erandiks on Eesti Liikluskindlustuse Fond, kellel esines 2014–2015 kõrge kahjusuhe, peegeldades fondi ülesannet katta kindlustamata sõidukite ja teadmata süüdlastest põhjustatud kahjusid. Väiksemate firmade seas paistavad silma Salva Kindlustuse AS ja Kredex Krediidikindlustus AS, kelle keskmine kahjusuhe on madal, näidates efektiivset riskijuhtimist.
+
+Hooajalisuse osas on märgata, et suurte kindlustusfirmade maksed ja väljamaksed on aasta jooksul tõusvas trendis, talvekuudel on väljamaksed suuremad, mis on loogiline ilmastikuolude ja liiklusõnnetuste sageduse tõttu. Väiksemate seltside väljamaksed on seevastu stabiilsed ja hooajalisust peaaegu ei esine, peegeldades nende piiratud turuosa ja riskikartlikkust.
+
+COVID-19 pandeemia mõjutas 2020.–2022. aastatel märgatavalt kahjusuhtesid, kuid suured firmad suutsid siiski hoida kahjusuhted alla turu keskmise, näidates head kohanemisvõimet ja tõhusat riskijuhtimist. Alates 2022. aastast on kahjusuhted taas langustrendis, mis viitab turu stabiliseerumisele ja kasumlikkuse taastumisele.
+
+Kokkuvõttes võib öelda, et Eesti kindlustusturg on tugevalt kontsentreeritud ja suured firmad on turul domineerivad ning tulusad, samas kui väiksemad kindlustusandjad tegutsevad ettevaatlikult ja stabiilselt, kohandudes turu piirangute ja riskidega.
